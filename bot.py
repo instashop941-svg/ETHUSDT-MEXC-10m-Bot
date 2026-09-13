@@ -1,13 +1,12 @@
 import os, json, time, logging
 from collections import OrderedDict
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN=os.getenv('TELEGRAM_BOT_TOKEN','').strip()
-CHAT_IDS=[x.strip() for x in os.getenv('TELEGRAM_CHAT_ID','').split(',') if x.strip()]
+CHAT_ID=os.getenv('TELEGRAM_CHAT_ID','').strip()
 SYMBOL=os.getenv('MEXC_SYMBOL','ETH_USDT').strip().upper()
 POLL=int(os.getenv('POLL_SECONDS','15'))
 STATE_FILE=os.getenv('STATE_FILE','state.json')
@@ -18,9 +17,6 @@ log=logging.getLogger('eth-bot')
 
 def utc(ts):
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-
-def kyiv(ts):
-    return datetime.fromtimestamp(ts, tz=ZoneInfo('Europe/Kyiv')).strftime('%Y-%m-%d %H:%M')
 
 def color(c):
     return 'GREEN' if c['close'] > c['open'] else 'RED' if c['close'] < c['open'] else 'DOJI'
@@ -38,26 +34,22 @@ def save_state(s):
     os.replace(STATE_FILE + '.tmp', STATE_FILE)
 
 def tg(text):
-    if not TOKEN or not CHAT_IDS:
+    if not TOKEN or not CHAT_ID:
         log.error('TELEGRAM NOT CONFIGURED')
         return False
-
-    sent = 0
-    for chat_id in CHAT_IDS:
-        try:
-            r=requests.post(
-                f'https://api.telegram.org/bot{TOKEN}/sendMessage',
-                json={'chat_id': chat_id, 'text': text},
-                timeout=15
-            )
-            if r.ok and r.json().get('ok'):
-                sent += 1
-                log.info('TELEGRAM SENT OK | chat=%s', chat_id)
-            else:
-                log.error('TELEGRAM ERROR | chat=%s | status=%s body=%s', chat_id, r.status_code, r.text[:300])
-        except Exception as e:
-            log.exception('TELEGRAM EXCEPTION | chat=%s: %s', chat_id, e)
-    return sent == len(CHAT_IDS)
+    try:
+        r=requests.post(
+            f'https://api.telegram.org/bot{TOKEN}/sendMessage',
+            json={'chat_id': CHAT_ID, 'text': text},
+            timeout=15
+        )
+        if r.ok and r.json().get('ok'):
+            log.info('TELEGRAM SENT OK')
+            return True
+        log.error('TELEGRAM ERROR status=%s body=%s', r.status_code, r.text[:300])
+    except Exception as e:
+        log.exception('TELEGRAM EXCEPTION: %s', e)
+    return False
 
 def fetch():
     r=requests.get(
@@ -100,9 +92,8 @@ def agg(mins):
     return out
 
 class Engine:
-    def __init__(self, state, session_start_ts):
+    def __init__(self, state):
         self.state=state
-        self.session_start_ts=session_start_ts
         self.c=OrderedDict()
         self.pending=[]
         self.initialized=False
@@ -162,48 +153,34 @@ class Engine:
                 keep.append(p)
         self.pending=keep
 
-        # Start candidates: every candle, EXCEPT a candle that is followed
-        # by another candle of the same color. In other words, if there is
-        # a run of same-colored candles, only the LAST candle in that run
-        # can be the start. A doji breaks a color run.
+        # Start = last candle of a consecutive same-color run.
         # Trigger = exactly the 6th subsequent candle, opposite color.
         if idx<6:
             return
         sidx=idx-6
         start=self.c[keys[sidx]]
+        seq=[self.c[keys[sidx+j]] for j in range(1,7)]
         sc=color(start)
         if sc not in ('GREEN','RED'):
             return
-        if sidx+1 < len(keys):
-            next_color=color(self.c[keys[sidx+1]])
-            if next_color == sc:
-                return
-        seq=[self.c[keys[sidx+j]] for j in range(1,7)]
+        if color(seq[0])==sc:
+            return
         trig=color(seq[-1])
         direction='LONG' if sc=='GREEN' and trig=='RED' else 'SHORT' if sc=='RED' and trig=='GREEN' else None
         if not direction:
             return
-        # IMPORTANT: after a Railway restart, never create a signal from a
-        # start candle that happened before this bot session began.
-        # Historical candles are kept only as context for the first NEW signal.
-        if start['ts'] < self.session_start_ts:
-            return
         if any(p['start_ts']==start['ts'] for p in self.pending):
             return
-        log.info('SIGNAL %s | start=%s Kyiv | trigger=%s UTC', direction, kyiv(start['ts']), utc(ts))
-        tg(f'SIGNAL {direction}\n\nETHUSDT Futures\nTimeframe: 10m\nStart: {kyiv(start["ts"])} Kyiv time\nTrigger: candle 6\n\nSignal only - no automatic trading.')
+        log.info('SIGNAL %s | start=%s %s | trigger=%s %s', direction, utc(start['ts']), sc, utc(ts), trig)
+        tg(f'SIGNAL {direction}\n\nETHUSDT Futures\nTimeframe: 10m\nStart: {utc(start["ts"])}\nTrigger: candle 6\n\nSignal only - no automatic trading.')
         self.pending.append({'start_ts':start['ts'], 'trigger_idx':idx, 'direction':direction})
 
 state=load_state()
-SESSION_START_TS=int(time.time())
-engine=Engine(state, SESSION_START_TS)
+engine=Engine(state)
 
 def main():
-    log.info('Started ETH_USDT 10m signal bot v9 (REST polling)')
-    log.info('SESSION RESET | old pending signals ignored | session_start=%s', utc(SESSION_START_TS))
-    log.info('Config: poll=%ss, chats=%d, token_configured=%s', POLL, len(CHAT_IDS), bool(TOKEN))
-    if TOKEN and CHAT_IDS:
-        tg('BOT ONLINE\nETHUSDT Futures\nSignal bot is active.\nThis test confirms Telegram delivery to all configured chats.')
+    log.info('Started ETH_USDT 10m signal bot v4 (REST polling)')
+    log.info('Config: poll=%ss, chat_id_configured=%s, token_configured=%s', POLL, bool(CHAT_ID), bool(TOKEN))
     last_log=0
     while True:
         try:
