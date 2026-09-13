@@ -96,8 +96,9 @@ def agg(mins):
     return out
 
 class Engine:
-    def __init__(self, state):
+    def __init__(self, state, session_start_ts):
         self.state=state
+        self.session_start_ts=session_start_ts
         self.c=OrderedDict()
         self.pending=[]
         self.initialized=False
@@ -171,6 +172,11 @@ class Engine:
         direction='LONG' if sc=='GREEN' and trig=='RED' else 'SHORT' if sc=='RED' and trig=='GREEN' else None
         if not direction:
             return
+        # IMPORTANT: after a Railway restart, never create a signal from a
+        # start candle that happened before this bot session began.
+        # Historical candles are kept only as context for the first NEW signal.
+        if start['ts'] < self.session_start_ts:
+            return
         if any(p['start_ts']==start['ts'] for p in self.pending):
             return
         log.info('SIGNAL %s | start=%s %s | trigger=%s %s', direction, utc(start['ts']), sc, utc(ts), trig)
@@ -178,10 +184,12 @@ class Engine:
         self.pending.append({'start_ts':start['ts'], 'trigger_idx':idx, 'direction':direction})
 
 state=load_state()
-engine=Engine(state)
+SESSION_START_TS=int(time.time())
+engine=Engine(state, SESSION_START_TS)
 
 def main():
-    log.info('Started ETH_USDT 10m signal bot v6 (REST polling)')
+    log.info('Started ETH_USDT 10m signal bot v7 (REST polling)')
+    log.info('SESSION RESET | old pending signals ignored | session_start=%s', utc(SESSION_START_TS))
     log.info('Config: poll=%ss, chats=%d, token_configured=%s', POLL, len(CHAT_IDS), bool(TOKEN))
     if TOKEN and CHAT_IDS:
         tg('BOT ONLINE\nETHUSDT Futures\nSignal bot is active.\nThis test confirms Telegram delivery to all configured chats.')
