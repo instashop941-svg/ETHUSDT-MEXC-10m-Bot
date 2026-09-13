@@ -162,16 +162,23 @@ class Engine:
                 keep.append(p)
         self.pending=keep
 
-        # Start = last candle of a consecutive same-color run.
+        # Start candidates: every candle, EXCEPT a candle that is followed
+        # by another candle of the same color. In other words, if there is
+        # a run of same-colored candles, only the LAST candle in that run
+        # can be the start. A doji breaks a color run.
         # Trigger = exactly the 6th subsequent candle, opposite color.
         if idx<6:
             return
         sidx=idx-6
         start=self.c[keys[sidx]]
-        seq=[self.c[keys[sidx+j]] for j in range(1,7)]
         sc=color(start)
         if sc not in ('GREEN','RED'):
             return
+        if sidx+1 < len(keys):
+            next_color=color(self.c[keys[sidx+1]])
+            if next_color == sc:
+                return
+        seq=[self.c[keys[sidx+j]] for j in range(1,7)]
         trig=color(seq[-1])
         direction='LONG' if sc=='GREEN' and trig=='RED' else 'SHORT' if sc=='RED' and trig=='GREEN' else None
         if not direction:
