@@ -167,8 +167,6 @@ class Engine:
         sc=color(start)
         if sc not in ('GREEN','RED'):
             return
-        if color(seq[0])==sc:
-            return
         trig=color(seq[-1])
         direction='LONG' if sc=='GREEN' and trig=='RED' else 'SHORT' if sc=='RED' and trig=='GREEN' else None
         if not direction:
@@ -183,8 +181,10 @@ state=load_state()
 engine=Engine(state)
 
 def main():
-    log.info('Started ETH_USDT 10m signal bot v4 (REST polling)')
+    log.info('Started ETH_USDT 10m signal bot v6 (REST polling)')
     log.info('Config: poll=%ss, chats=%d, token_configured=%s', POLL, len(CHAT_IDS), bool(TOKEN))
+    if TOKEN and CHAT_IDS:
+        tg('BOT ONLINE\nETHUSDT Futures\nSignal bot is active.\nThis test confirms Telegram delivery to all configured chats.')
     last_log=0
     while True:
         try:
