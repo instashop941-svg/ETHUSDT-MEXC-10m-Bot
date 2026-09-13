@@ -199,7 +199,7 @@ SESSION_START_TS=int(time.time())
 engine=Engine(state, SESSION_START_TS)
 
 def main():
-    log.info('Started ETH_USDT 10m signal bot v8 (REST polling)')
+    log.info('Started ETH_USDT 10m signal bot v9 (REST polling)')
     log.info('SESSION RESET | old pending signals ignored | session_start=%s', utc(SESSION_START_TS))
     log.info('Config: poll=%ss, chats=%d, token_configured=%s', POLL, len(CHAT_IDS), bool(TOKEN))
     if TOKEN and CHAT_IDS:
