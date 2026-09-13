@@ -1,6 +1,7 @@
 import os, json, time, logging
 from collections import OrderedDict
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import requests
 from dotenv import load_dotenv
 
@@ -17,6 +18,9 @@ log=logging.getLogger('eth-bot')
 
 def utc(ts):
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+
+def kyiv(ts):
+    return datetime.fromtimestamp(ts, tz=ZoneInfo('Europe/Kyiv')).strftime('%Y-%m-%d %H:%M')
 
 def color(c):
     return 'GREEN' if c['close'] > c['open'] else 'RED' if c['close'] < c['open'] else 'DOJI'
@@ -179,8 +183,8 @@ class Engine:
             return
         if any(p['start_ts']==start['ts'] for p in self.pending):
             return
-        log.info('SIGNAL %s | start=%s %s | trigger=%s %s', direction, utc(start['ts']), sc, utc(ts), trig)
-        tg(f'SIGNAL {direction}\n\nETHUSDT Futures\nTimeframe: 10m\nStart: {utc(start["ts"])}\nTrigger: candle 6\n\nSignal only - no automatic trading.')
+        log.info('SIGNAL %s | start=%s Kyiv | trigger=%s UTC', direction, kyiv(start['ts']), utc(ts))
+        tg(f'SIGNAL {direction}\n\nETHUSDT Futures\nTimeframe: 10m\nStart: {kyiv(start["ts"])} Kyiv time\nTrigger: candle 6\n\nSignal only - no automatic trading.')
         self.pending.append({'start_ts':start['ts'], 'trigger_idx':idx, 'direction':direction})
 
 state=load_state()
@@ -188,7 +192,7 @@ SESSION_START_TS=int(time.time())
 engine=Engine(state, SESSION_START_TS)
 
 def main():
-    log.info('Started ETH_USDT 10m signal bot v7 (REST polling)')
+    log.info('Started ETH_USDT 10m signal bot v8 (REST polling)')
     log.info('SESSION RESET | old pending signals ignored | session_start=%s', utc(SESSION_START_TS))
     log.info('Config: poll=%ss, chats=%d, token_configured=%s', POLL, len(CHAT_IDS), bool(TOKEN))
     if TOKEN and CHAT_IDS:
