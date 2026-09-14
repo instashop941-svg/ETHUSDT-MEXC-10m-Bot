@@ -37,16 +37,17 @@ def save_state(s):
         json.dump(s, f, indent=2)
     os.replace(STATE_FILE + '.tmp', STATE_FILE)
 
-def tg(text):
+def tg(text, group_text=None):
     if not TOKEN or not CHAT_IDS:
         log.error('TELEGRAM NOT CONFIGURED')
         return False
     sent=0
     for chat_id in CHAT_IDS:
         try:
+            send_text = group_text if (group_text is not None and chat_id.startswith('-')) else text
             r=requests.post(
                 f'https://api.telegram.org/bot{TOKEN}/sendMessage',
-                json={'chat_id': chat_id, 'text': text},
+                json={'chat_id': chat_id, 'text': send_text},
                 timeout=15
             )
             if r.ok and r.json().get('ok'):
@@ -152,10 +153,10 @@ class Engine:
             want='GREEN' if p['direction']=='LONG' else 'RED'
             if color(cur)==want:
                 log.info('RESULT WIN | %s | start=%s | control=%d', p['direction'], utc(p['start_ts']), rel)
-                tg(f'WIN\nETHUSDT Futures\nDirection: {p["direction"]}\nControl candle: {rel}/7')
+                tg(f'WIN\nETHUSDT Futures\nDirection: {p["direction"]}\nControl candle: {rel}/7\n\nТрейдер Василь Павлів\n@vasylpavliv\nhttps://t.me/vasylpavliv')
             elif rel>=7:
                 log.info('RESULT LOSS | %s | start=%s', p['direction'], utc(p['start_ts']))
-                tg(f'LOSS\nETHUSDT Futures\nDirection: {p["direction"]}\nNo confirmation in candles 7-13')
+                tg(f'LOSS\nETHUSDT Futures\nDirection: {p["direction"]}\nNo confirmation in candles 7-13\n\nТрейдер Василь Павлів\n@vasylpavliv\nhttps://t.me/vasylpavliv')
             else:
                 keep.append(p)
         self.pending=keep
@@ -188,7 +189,9 @@ class Engine:
         if any(p['start_ts']==start['ts'] for p in self.pending):
             return
         log.info('SIGNAL %s | start=%s %s | trigger=%s %s', direction, utc(start['ts']), sc, utc(ts), trig)
-        tg(f'SIGNAL {direction}\n\nETHUSDT Futures\nTimeframe: 10m\nStart: {kyiv(start["ts"])} Kyiv time\nTrigger: candle 6\n\nSignal only - no automatic trading.')
+        signal_text=(f'SIGNAL {direction}\n\nETHUSDT Futures\nTimeframe: 10m\nStart: {kyiv(start["ts"])} Kyiv time\nTrigger: candle 6\n\nSignal only - no automatic trading.\n\nТрейдер Василь Павлів\n@vasylpavliv\nhttps://t.me/vasylpavliv')
+        signal_group_text=(f'SIGNAL {direction}\n\nETHUSDT Futures\nTimeframe: 10m\nStart: {kyiv(start["ts"])} Kyiv time\n\nSignal only - no automatic trading.\n\nТрейдер Василь Павлів\n@vasylpavliv\nhttps://t.me/vasylpavliv')
+        tg(signal_text, signal_group_text)
         self.pending.append({'start_ts':start['ts'], 'trigger_idx':idx, 'direction':direction})
 
 state=load_state()
