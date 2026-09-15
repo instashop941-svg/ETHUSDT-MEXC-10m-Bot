@@ -87,6 +87,17 @@ def fetch():
     out.sort(key=lambda x:x['ts'])
     return out
 
+def current_10m(mins):
+    """Build the currently forming 10m candle from 1m data."""
+    if not mins:
+        return None
+    b=(mins[-1]['ts']//600)*600
+    rows=[x for x in mins if (x['ts']//600)*600==b]
+    if not rows:
+        return None
+    rows.sort(key=lambda x:x['ts'])
+    return {'ts':b, 'open':rows[0]['open'], 'close':rows[-1]['close'], 'count':len(rows)}
+
 def agg(mins):
     buckets=OrderedDict()
     for c in mins:
@@ -105,6 +116,7 @@ class Engine:
         self.c=OrderedDict()
         self.pending=[]
         self.initialized=False
+        self.pre_alerted=set()
 
     def seed(self, closed):
         """Load current history without generating historical signals/results."""
@@ -118,6 +130,50 @@ class Engine:
         if self.c:
             latest=next(reversed(self.c.values()))
             log.info('INITIALIZED | history=%d | latest=%s %s | waiting for NEW 10m candle', len(self.c), utc(latest['ts']), color(latest))
+
+    def maybe_pre_alert(self, live10):
+        """At ~2 minutes before trigger close, warn when the live trigger is opposite the start."""
+        if not self.initialized or not live10:
+            return
+        # Only send during the final ~2 minutes of the current 10m candle.
+        now=time.time()
+        elapsed=now-live10['ts']
+        if elapsed < 480 or elapsed >= 600:
+            return
+
+        keys=list(self.c)
+        # Need the five prior closed candles plus the start candle; trigger is live.
+        # Current live candle is candle #6 after the candidate start.
+        target_ts=live10['ts']
+        if target_ts in self.c:
+            return
+        s_ts=target_ts-6*600
+        if s_ts not in self.c:
+            return
+        sidx=keys.index(s_ts)
+        start=self.c[s_ts]
+        sc=color(start)
+        if sc not in ('GREEN','RED'):
+            return
+        # Start must be the last candle of its same-color run.
+        if sidx+1 < len(keys) and color(self.c[keys[sidx+1]]) == sc:
+            return
+
+        trig=color(live10)
+        if trig not in ('GREEN','RED') or trig == sc:
+            return
+        if target_ts in self.pre_alerted:
+            return
+
+        log.info('PRE-SIGNAL | start=%s %s | live trigger=%s %s | ~2m left', utc(start['ts']), sc, utc(target_ts), trig)
+        group_text=('**Всі готові?**\n'
+                     '**Скоро дам СИГНАЛ!**\n\n'
+                     'ETHUSDT Futures\n'
+                     'Timeframe: 10m\n\n'
+                     '⚠️ Сигнал буде тільки після закриття свічки.')
+        # Pre-signal announcement is intended for the Telegram group only.
+        tg('', group_text)
+        self.pre_alerted.add(target_ts)
 
     def ingest_new(self, closed):
         if not self.initialized:
@@ -206,6 +262,9 @@ def main():
     while True:
         try:
             mins=fetch()
+            live10=current_10m(mins)
+            if live10:
+                engine.maybe_pre_alert(live10)
             closed=agg(mins)
             if not closed:
                 log.warning('MEXC OK but no closed 10m candles yet')
