@@ -1,37 +1,16 @@
-# ETHUSDT MEXC Futures — 10m Telegram Signal Bot
+# ETHUSDT MEXC 10m Telegram Bot v4
 
-Це готовий signal-only бот. Він НЕ відкриває угоди на MEXC.
+REST-only bot for MEXC ETH_USDT Futures.
 
-## Правило
+- Polls public MEXC 1m candles every 15 seconds.
+- Builds closed 10m candles locally.
+- Uses the agreed signal rule: last candle of a green/red run, then 6 subsequent candles; opposite color on candle 6 triggers LONG/SHORT.
+- Control candles 7-13 decide WIN/LOSS.
+- **On startup it seeds history without sending old historical signals.**
+- Telegram messages use plain UTF-8 text without emoji, avoiding mojibake such as `â`.
 
-Стартом є **остання свічка серії одного кольору**.
+Railway variables remain unchanged:
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `MEXC_SYMBOL`, `POLL_SECONDS`, `STATE_FILE`.
 
-- 🟢 остання зелена → 6 наступних → якщо 6-та 🔴 → 🔔 LONG.
-- 🔴 остання червона → 6 наступних → якщо 6-та 🟢 → 🔔 SHORT.
 
-Після сигналу контролюються свічки 7–13:
-
-- LONG: будь-яка 🟢 у 7–13 = WIN.
-- SHORT: будь-яка 🔴 у 7–13 = WIN.
-- Якщо потрібного кольору немає до закриття 13-ї = LOSS.
-
-Doji не є ні 🟢, ні 🔴.
-
-## Дані
-
-Бот бере публічні MEXC Futures 1m candles і агрегує їх у 10m. Для сигналів MEXC API key не потрібен.
-
-## Запуск
-
-1. Python 3.10+.
-2. `pip install -r requirements.txt`
-3. Створіть `.env` з `.env.example`.
-4. Вставте токен Telegram від @BotFather.
-5. Вставте `TELEGRAM_CHAT_ID`.
-6. `python bot.py`
-
-`state.json` зберігає стан, щоб після перезапуску не дублювати вже оброблені свічки.
-
-## Важливо
-
-Ця версія тільки надсилає сигнали та WIN/LOSS. Автоматичних угод немає.
+Оновлення: у групі рядок "Trigger: candle 6" приховано; у приватному чаті він залишається.
